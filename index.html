@@ -3,195 +3,104 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AgriTech | Smart Monitoring</title>
+    <title>AgriTech Dashboard</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/react@18.3.1/umd/react.development.js"></script>
     <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js"></script>
     <script src="https://unpkg.com/framer-motion@11.11.17/dist/framer-motion.js"></script>
-    
-    <script>window.Motion = window.FramerMotion;</script>
 
     <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Barlow:wght@300;400;500;600&display=swap" rel="stylesheet">
 
     <style>
-        body { background: #000; color: white; margin: 0; font-family: 'Barlow', sans-serif; overflow-x: hidden; }
+        body { background: #000; color: white; margin: 0; font-family: 'Barlow', sans-serif; overflow: hidden; }
         .font-heading { font-family: 'Instrument Serif', serif; font-style: italic; }
-        
-        .liquid-glass {
-            background: rgba(255,255,255,0.01);
-            backdrop-filter: blur(4px);
-            -webkit-backdrop-filter: blur(4px);
-            box-shadow: inset 0 1px 1px rgba(255,255,255,0.1);
-            position: relative;
-            overflow: hidden;
-            border-radius: 9999px;
-        }
-
         .liquid-glass-strong {
             background: rgba(255,255,255,0.03);
-            backdrop-filter: blur(50px);
-            box-shadow: 4px 4px 4px rgba(0,0,0,0.05), inset 0 1px 1px rgba(255,255,255,0.15);
-            border-radius: 20px;
-        }
-
-        .liquid-glass::before, .liquid-glass-strong::before {
-            content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1.4px;
-            background: linear-gradient(180deg, rgba(255,255,255,0.45) 0%, rgba(255,255,255,0) 40%, rgba(255,255,255,0.45) 100%);
-            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
-            -webkit-mask-composite: xor; mask-composite: exclude; pointer-events: none;
+            backdrop-filter: blur(40px);
+            -webkit-backdrop-filter: blur(40px);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 24px;
+            box-shadow: inset 0 1px 1px rgba(255,255,255,0.1);
         }
     </style>
 </head>
 <body>
-    <div id="root"></div>
+    <div id="root">
+        <div style="height: 100vh; display: flex; align-items: center; justify-content: center; background: #000;">
+            <p style="font-family: sans-serif; color: #444;">Initializing Agri-Systems...</p>
+        </div>
+    </div>
 
     <script type="text/babel">
-        const { useState, useEffect, useRef } = React;
-        const Motion = window.Motion || window.FramerMotion;
+        // Safety: Wait for Framer Motion to exist globally
+        const Motion = window.FramerMotion || {};
 
-        // --- REPLACE THESE WITH YOUR ACTUAL THINGSPEAK KEYS ---
-        const THINGSPEAK_CHANNEL_ID = "3334736"; 
-        const THINGSPEAK_API_KEY = "J7OV2QHJV92DCRS9";
-        const FETCH_INTERVAL = 15000; 
-
-        const FadingVideo = ({ src, className, style }) => {
-            const videoRef = useRef(null);
-            const rAFId = useRef(null);
-
-            const fadeTo = (target, duration) => {
-                cancelAnimationFrame(rAFId.current);
-                const startOpacity = parseFloat(videoRef.current.style.opacity) || 0;
-                const startTime = performance.now();
-                const animate = (now) => {
-                    const elapsed = now - startTime;
-                    const progress = Math.min(elapsed / duration, 1);
-                    videoRef.current.style.opacity = startOpacity + (target - startOpacity) * progress;
-                    if (progress < 1) rAFId.current = requestAnimationFrame(animate);
-                };
-                rAFId.current = requestAnimationFrame(animate);
-            };
-
-            useEffect(() => {
-                const video = videoRef.current;
-                const onLoaded = () => fadeTo(1, 500);
-                const onTimeUpdate = () => {
-                    if (video.duration - video.currentTime <= 0.55 && video.style.opacity == 1) fadeTo(0, 500);
-                };
-                const onEnded = () => {
-                    video.style.opacity = 0;
-                    setTimeout(() => { video.currentTime = 0; video.play(); fadeTo(1, 500); }, 100);
-                };
-                video.addEventListener('loadeddata', onLoaded);
-                video.addEventListener('timeupdate', onTimeUpdate);
-                video.addEventListener('ended', onEnded);
-                return () => { cancelAnimationFrame(rAFId.current); };
-            }, [src]);
-
-            return <video ref={videoRef} src={src} muted playsInline autoPlay className={className} style={style} />;
-        };
+        // --- CONFIGURE YOUR DATA HERE ---
+        const CHANNEL_ID = "3334736"; 
+        const API_KEY = "J7OV2QHJV92DCRS9";
 
         const Dashboard = () => {
-            const [data, setData] = useState({ temp: "--", hum: "--", soil: 0, status: "Connecting..." });
+            const [data, setData] = React.useState({ temp: "--", hum: "--", soil: 0 });
 
-            useEffect(() => {
-                const fetchData = async () => {
+            React.useEffect(() => {
+                const getData = async () => {
                     try {
-                        const res = await fetch(`https://api.thingspeak.com/channels/${THINGSPEAK_CHANNEL_ID}/feeds.json?api_key=${THINGSPEAK_API_KEY}&results=1`);
+                        const res = await fetch(`https://api.thingspeak.com/channels/${CHANNEL_ID}/feeds.json?api_key=${API_KEY}&results=1`);
                         const json = await res.json();
                         if (json.feeds && json.feeds.length > 0) {
-                            const latest = json.feeds[json.feeds.length - 1];
-                            const soilVal = parseFloat(latest.field3) || 0;
-                            let status = "Normal";
-                            if (soilVal < 30) status = "Dry (Action Required)";
-                            else if (soilVal > 70) status = "Wet (Saturation High)";
-
-                            setData({ temp: latest.field1 || "--", hum: latest.field2 || "--", soil: soilVal, status: status });
+                            const last = json.feeds[0];
+                            setData({ 
+                                temp: last.field1 || "--", 
+                                hum: last.field2 || "--", 
+                                soil: parseFloat(last.field3) || 0 
+                            });
                         }
-                    } catch (e) { console.error("Data Fetch Error", e); }
+                    } catch (e) { console.log("Waiting for data..."); }
                 };
-                fetchData();
-                const interval = setInterval(fetchData, FETCH_INTERVAL);
-                return () => clearInterval(interval);
+                getData();
+                setInterval(getData, 15000);
             }, []);
 
             return (
-                <div className="relative w-full">
-                    {/* SECTION 1: HERO */}
-                    <section className="relative h-screen flex flex-col items-center justify-center overflow-hidden">
-                        <FadingVideo 
-                            src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260418_080021_d598092b-c4c2-4e53-8e46-94cf9064cd50.mp4"
-                            className="absolute left-1/2 top-0 -translate-x-1/2 object-cover object-top z-0"
-                            style={{ width: "120%", height: "120%" }}
-                        />
-                        
-                        <div className="z-10 text-center px-6">
-                            <Motion.div 
-                                initial={{ opacity: 0, y: 20 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="liquid-glass inline-flex items-center px-4 py-1 mb-6"
-                            >
-                                <span className="bg-white text-black text-[10px] font-bold px-2 py-0.5 rounded-full mr-3">LIVE</span>
-                                <span className="text-sm text-white/90">Soil Status: {data.status}</span>
-                            </Motion.div>
+                <div className="relative h-screen w-full overflow-hidden bg-black">
+                    {/* Cinematic Background */}
+                    <video 
+                        src="https://d8j0ntlcm91z4.cloudfront.net/user_38xzZboKViGWJOttwIXH07lWA1P/hf_20260418_080021_d598092b-c4c2-4e53-8e46-94cf9064cd50.mp4"
+                        autoPlay muted loop playsInline
+                        className="absolute inset-0 w-full h-full object-cover opacity-60"
+                    />
 
-                            <h1 className="font-heading text-6xl md:text-8xl text-white tracking-tighter leading-[0.8] mb-12">
-                                Terrestrial <br/> Vitality
+                    {/* Dashboard UI */}
+                    <div className="relative z-10 flex flex-col items-center justify-center h-full px-6">
+                        <div className="text-center mb-12">
+                            <h1 className="font-heading text-7xl md:text-8xl tracking-tighter leading-none mb-4">
+                                Agri-Vitality
                             </h1>
-                            
-                            <div className="flex flex-wrap gap-4 justify-center">
-                                <div className="liquid-glass-strong p-6 w-40 md:w-48">
-                                    <p className="text-[10px] uppercase tracking-widest text-white/60 mb-2">Air Temp</p>
-                                    <h2 className="font-heading text-4xl">{data.temp}°C</h2>
-                                </div>
-                                <div className="liquid-glass-strong p-6 w-40 md:w-48">
-                                    <p className="text-[10px] uppercase tracking-widest text-white/60 mb-2">Humidity</p>
-                                    <h2 className="font-heading text-4xl">{data.hum}%</h2>
-                                </div>
-                            </div>
+                            <p className="text-white/40 uppercase tracking-widest text-xs">IoT Command Center</p>
                         </div>
-                    </section>
 
-                    {/* SECTION 2: SOIL ANALYSIS */}
-                    <section className="relative min-h-screen bg-black pt-24 px-8 lg:px-24">
-                        <Motion.p 
-                            initial={{ opacity: 0 }}
-                            whileInView={{ opacity: 1 }}
-                            className="text-white/50 text-sm mb-4"
-                        >
-                            // CRITICAL PARAMETERS
-                        </Motion.p>
-                        <h2 className="font-heading text-5xl md:text-7xl text-white mb-16">Deep Analysis</h2>
-                        
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                            <div className="liquid-glass-strong p-8 min-h-[320px] flex flex-col">
-                                <div className="flex justify-between items-start mb-auto">
-                                    <div className="w-10 h-10 liquid-glass flex items-center justify-center rounded-lg">
-                                        <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z"/>
-                                        </svg>
-                                    </div>
-                                    <div className={`px-3 py-1 rounded-full text-[10px] font-bold ${data.soil < 30 ? 'bg-red-500' : data.soil > 70 ? 'bg-blue-500' : 'bg-green-500'}`}>
-                                        {data.soil < 30 ? 'DRY' : data.soil > 70 ? 'WET' : 'NORMAL'}
-                                    </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl">
+                            <div className="liquid-glass-strong p-8">
+                                <p className="text-[10px] uppercase tracking-[0.2em] text-white/50 mb-2">Soil Moisture</p>
+                                <h2 className="font-heading text-6xl mb-2">{data.soil}%</h2>
+                                <div className={`h-1 w-full rounded-full bg-white/10 overflow-hidden`}>
+                                    <div className="h-full bg-white transition-all duration-1000" style={{ width: `${data.soil}%` }}></div>
                                 </div>
-                                <h4 className="font-heading text-3xl mt-6">Soil Moisture</h4>
-                                <p className="text-6xl font-heading mt-2">{data.soil}%</p>
-                                <p className="text-sm text-white/50 mt-6 font-light leading-snug">
-                                    Real-time moisture data streamed via ESP32. Optimal range for crop growth is 40% - 60%.
-                                </p>
                             </div>
-                            
-                            {/* Card 2 & 3 - Empty for future charts */}
-                            <div className="liquid-glass-strong p-8 min-h-[320px] opacity-40 border border-white/5 border-dashed flex items-center justify-center">
-                                <p className="text-xs uppercase tracking-widest text-white/40">Historical Chart Placeholder</p>
+
+                            <div className="liquid-glass-strong p-8">
+                                <p className="text-[10px] uppercase tracking-[0.2em] text-white/50 mb-2">Air Temp</p>
+                                <h2 className="font-heading text-6xl">{data.temp}°C</h2>
                             </div>
-                            <div className="liquid-glass-strong p-8 min-h-[320px] opacity-40 border border-white/5 border-dashed flex items-center justify-center">
-                                <p className="text-xs uppercase tracking-widest text-white/40">Irrigation Log Placeholder</p>
+
+                            <div className="liquid-glass-strong p-8">
+                                <p className="text-[10px] uppercase tracking-[0.2em] text-white/50 mb-2">Humidity</p>
+                                <h2 className="font-heading text-6xl">{data.hum}%</h2>
                             </div>
                         </div>
-                    </section>
+                    </div>
                 </div>
             );
         };
